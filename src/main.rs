@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read};
+use std::{env, fs::File, io::Read, process::Command};
 
 use blocker::Blocker;
 use host_request::HostRequest;
@@ -6,46 +6,90 @@ use host_request::HostRequest;
 use crate::blocklist::BlockList;
 
 mod blocker;
-mod host_request;
 mod blocklist;
+mod host_request;
 
 fn main() {
-    // takes in seconds to block if -s is passed
-    // checks if -s is passed in
-    let mut args = std::env::args();
-    println!("{:?}", args);
-    args.next();
-    args.next();
-    let seconds = args.next().unwrap_or(String::from("0"));
-    println!("{:?}", seconds);
-    let seconds = seconds.parse::<u64>().unwrap_or(0);
+    // takes in seconds as an argument
+    // launches a process that blocks the website for that amount of time
 
-    const website : &str = "google.com";
+    let args: Vec<String> = env::args().skip(1).collect();
 
-    println!("Blocking {} for {} seconds", website, seconds);
-
-    // remove website from hosts file
-    let hosts = HostRequest::get_hosts();
-    let new_hosts = Blocker::remove(&hosts, website);
-    HostRequest::write_hosts(new_hosts);
-
-    let hosts = HostRequest::get_hosts();
-    let new_hosts = Blocker::add(hosts, String::from(website));
-    HostRequest::write_hosts(new_hosts);
-
-    if seconds > 0 {
-        std::thread::sleep(std::time::Duration::from_secs(seconds));
-        let hosts = HostRequest::get_hosts();
-        let new_hosts = Blocker::remove(&hosts, website);
-        HostRequest::write_hosts(new_hosts);
-        println!("{} has been unblocked", website);
+    if args.len() == 0 {
+        println!("No arguments provided");
         return;
     }
-}
 
-fn read_hosts() -> String {
-    let mut hosts_text = String::new();
-    let mut hosts_file = File::open("/etc/hosts").unwrap();
-    hosts_file.read_to_string(&mut hosts_text).unwrap();
-    hosts_text
+    match args[0].as_str() {
+        "-a" => {
+            if args.len() < 2 {
+                println!("No website provided");
+                return;
+            }
+            BlockList::add(args[1].clone());
+            // write to bl
+        }
+        "-r" => {
+            if args.len() < 2 {
+                println!("No website provided");
+                return;
+            }
+            BlockList::remove(&args[1]);
+        }
+        "-c" => {
+            BlockList::clear();
+        }
+        "-b" => {
+            let blocked_websites: Vec<String> = BlockList::read();
+            let mut hosts_file = HostRequest::get_hosts();
+            hosts_file = Blocker::add(hosts_file, blocked_websites);
+            HostRequest::write_hosts(hosts_file);
+        }
+        "-f" => {
+            let mut hosts_file = HostRequest::get_hosts();
+            hosts_file = Blocker::clear(&hosts_file);
+            HostRequest::write_hosts(hosts_file);
+        }
+        "-s" => {
+            if args.len() < 2 {
+                println!("No time provided");
+                return;
+            }
+            let time = args[1].parse::<u64>().unwrap();
+            // checks if child process is running
+            // if not, then it launches a process that writes to hosts then
+            // waits for the time and then clears the hosts file
+
+
+            Command::new("osascript")
+                .arg("-e")
+                .arg(format!("do shell script \"./target/debug/siteblocker -w ${time}\" with administrator privileges"))
+                .spawn()
+                .expect("Failed to execute osascript command");
+        }
+        "-w" => {
+            // child process that writes to hosts, waits for time, then clears hosts
+            let time = args[1].parse::<u64>().unwrap();
+            let blocked_websites: Vec<String> = BlockList::read();
+            let mut hosts_file = HostRequest::get_hosts();
+            hosts_file = Blocker::add(hosts_file, blocked_websites);
+
+            // write to hosts
+            HostRequest::write_hosts(hosts_file.clone());
+            // wait for time
+            std::thread::sleep(std::time::Duration::from_secs(time));
+            // clear hosts
+            hosts_file = Blocker::clear(&hosts_file);
+            HostRequest::write_hosts(hosts_file);
+
+            println!("Finished blocking websites");
+        }
+        "-p" => {
+            let blocked_websites = BlockList::read();
+            println!("Blocked websites: {:?}", blocked_websites);
+        }
+        _ => {
+            println!("Invalid argument");
+        }
+    }
 }

@@ -12,6 +12,9 @@ impl BlockList {
         }
     }
     pub fn read() -> Vec<String> {
+        if !std::path::Path::new(BLOCKLIST_PATH).exists() {
+            File::create(BLOCKLIST_PATH).unwrap();
+        }
         let mut file = File::open(BLOCKLIST_PATH).unwrap();
         let mut contents = String::new();
         file.read_to_string(&mut contents).unwrap();
@@ -22,6 +25,10 @@ impl BlockList {
     }
     pub fn add(website: String) {
         let mut websites = BlockList::read();
+        // check if website is already in the blocklist
+        if websites.contains(&website) {
+            return;
+        }
         websites.push(website);
         BlockList::write(websites);
     }
@@ -29,6 +36,10 @@ impl BlockList {
         let mut websites = BlockList::read();
         websites.retain(|s| s != website);
         BlockList::write(websites);
+    }
+    pub fn clear() {
+        let mut file = File::create(BLOCKLIST_PATH).unwrap();
+        file.write_all("".as_bytes()).unwrap();
     }
 }
 
@@ -70,5 +81,16 @@ mod tests {
         let websites = vec![String::from("google.com"), String::from("youtube.com")];
         BlockList::write(websites.clone());
         assert_eq!(websites, BlockList::read());
+    }
+
+    // test clear
+    #[test]
+    fn test_clear() {
+        clear();
+        let websites = vec![String::from("google.com"), String::from("youtube.com")];
+        BlockList::write(websites.clone());
+        BlockList::clear();
+        let empty : Vec<String> = vec![];
+        assert_eq!(BlockList::read(), empty);
     }
 }

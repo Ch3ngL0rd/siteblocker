@@ -19,8 +19,8 @@ impl HostRequest {
     }
 
     pub fn get_hosts() -> String {
-        let output = Command::new("sudo")
-            .arg("cat")
+        // reads the host file without sudo
+        let output = Command::new("cat")
             .arg("/etc/hosts")
             .output()
             .expect("failed to execute process");
@@ -30,7 +30,7 @@ impl HostRequest {
 
     // writes hosts to /etc/hosts
     pub fn write_hosts(hosts: String) {
-        let output = Command::new("sudo")
+        Command::new("sudo")
             .arg("sh")
             .arg("-c")
             .arg(format!("echo \"{}\" > /etc/hosts", hosts))

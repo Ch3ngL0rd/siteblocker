@@ -9,19 +9,15 @@ pub struct Blocker;
 
 impl Blocker {
     // Adds a single website to the hosts file
-    pub fn add(hosts_text: String, website: String) -> String {
-        /*
-        1. Gets hosts_text
-        2. Checks if website is already blocked
-        3. If not, adds it to the hosts_text
-        4. Returns the new hosts_text
-        */
+    pub fn add(hosts_text: String, websites: Vec<String>) -> String {
+        // if website is blocked already, remove it
+        let websites : Vec<String> = websites
+            .into_iter()
+            .filter(|web| !Self::is_blocked(&hosts_text, web))
+            .collect();
 
-        if Self::is_blocked(&hosts_text, &website) {
-            return hosts_text;
-        }
-
-        let mut blocked_websites = Self::get_blocked(&hosts_text);
+        let binding = Self::get_blocked(&hosts_text);
+        let mut blocked_websites = binding.iter().chain(websites.iter());
 
         let mut new_hosts_text = String::new();
 
@@ -40,12 +36,11 @@ impl Blocker {
             new_hosts_text.push_str("\n");
         }
 
-        blocked_websites.push(website);
-
         new_hosts_text.push_str(&format!("{START_STRING}\n"));
         for blocked_website in blocked_websites {
-            new_hosts_text.push_str(&format!("127.0.0.1\t{blocked_website}\n"));
-            new_hosts_text.push_str(&format!("::\t{blocked_website}\n"));
+            println!("adding blocked_website: {}", blocked_website);
+            new_hosts_text.push_str(&format!("127.0.0.1\t{blocked_website}\r\n"));
+            new_hosts_text.push_str(&format!("::\t{blocked_website}\r\n"));
         }
         new_hosts_text.push_str(&format!("{END_STRING}\n"));
 
@@ -130,6 +125,26 @@ impl Blocker {
 
         new_hosts_text
     }
+
+    pub fn clear(hosts_text: &str) -> String {
+        let mut new_hosts_text = String::new();
+
+        let before_block = hosts_text
+            .lines()
+            .take_while(|s| !s.starts_with(START_STRING));
+
+        let after_block = hosts_text
+            .lines()
+            .skip_while(|s| !s.starts_with(END_STRING))
+            .skip(1);
+
+        for line in before_block.chain(after_block) {
+            new_hosts_text.push_str(line);
+            new_hosts_text.push_str("\n");
+        }
+
+        new_hosts_text
+    }
 }
 
 // tests to check if the blocker is working
@@ -149,7 +164,7 @@ mod tests {
     #[test]
     fn test_add() {
         let hosts_text = read_hosts();
-        let new_hosts = Blocker::add(hosts_text.clone(), String::from("google.com"));
+        let new_hosts = Blocker::add(hosts_text.clone(), vec![String::from("google.com")]);
         assert!(Blocker::is_blocked(&new_hosts, "google.com"));
     }
 
@@ -157,7 +172,7 @@ mod tests {
 
     fn test_remove() {
         let hosts_text = read_hosts();
-        let new_hosts = Blocker::add(hosts_text.clone(), String::from("google.com"));
+        let new_hosts = Blocker::add(hosts_text.clone(), vec![String::from("google.com")]);
         let new_hosts = Blocker::remove(&new_hosts, "google.com");
         assert!(!Blocker::is_blocked(&new_hosts, "google.com"));
     }
@@ -165,8 +180,16 @@ mod tests {
     #[test]
     fn test_get_blocked() {
         let hosts_text = read_hosts();
-        let new_hosts = Blocker::add(hosts_text.clone(), String::from("google.com"));
+        let new_hosts = Blocker::add(hosts_text.clone(), vec![String::from("google.com")]);
         let blocked = Blocker::get_blocked(&new_hosts);
         assert!(blocked.contains(&String::from("google.com")));
+    }
+
+    #[test]
+    fn test_clear() {
+        let hosts_text = read_hosts();
+        let new_hosts = Blocker::add(hosts_text.clone(), vec![String::from("google.com")]);
+        let new_hosts = Blocker::clear(&new_hosts);
+        assert!(!Blocker::is_blocked(&new_hosts, "google.com"));
     }
 }
